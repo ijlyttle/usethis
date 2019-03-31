@@ -10,17 +10,16 @@
 #' A new GitHub repo will be created via the GitHub API, therefore you must
 #' make a [GitHub personal access token
 #' (PAT)](https://github.com/settings/tokens) available. You can either
-#' provide this directly via the `auth_token` argument or store it in an
-#' environment variable. Use [browse_github_pat()] to get help obtaining and
-#' storing your PAT. See [gh::gh_whoami()] for even more detail.
+#' provide this directly via the `auth_token` argument or store it for retrieval
+#' with [github_token()].
 #'
 #' @inheritParams use_git
 #' @param organisation If supplied, the repo will be created under this
 #'   organisation, instead of the account of the user associated with the
 #'   `auth_token`. You must have permission to create repositories.
 #' @param private If `TRUE`, creates a private repository.
-#' @inheritParams use_git_protocol
-#' @inheritParams use_git2r_credentials
+#' @inheritParams git_protocol
+#' @inheritParams git2r_credentials
 #' @param host GitHub API host to use. Override with the endpoint-root for your
 #'   GitHub enterprise instance, for example,
 #'   "https://github.hostname.com/api/v3".
@@ -42,19 +41,16 @@ use_github <- function(organisation = NULL,
                        private = FALSE,
                        protocol = git_protocol(),
                        credentials = NULL,
-                       auth_token = NULL,
+                       auth_token = github_token(),
                        host = NULL) {
   check_uses_git()
   check_branch("master")
   check_uncommitted_changes()
   check_no_origin()
-  r <- git_repo()
-
-  ## auth_token is used directly by git2r, therefore cannot be NULL
-  auth_token <- auth_token %||% github_token()
   check_github_token(auth_token)
-  credentials <- credentials %||% git2r_credentials(protocol, auth_token)
 
+  credentials <- credentials %||% git2r_credentials(protocol, auth_token)
+  r <- git_repo()
   owner <- organisation %||% github_user(auth_token)[["login"]]
   repo_name <- project_name()
   check_no_github_repo(owner, repo_name, host, auth_token)
@@ -106,9 +102,10 @@ use_github <- function(organisation = NULL,
     )
   }
 
-  origin_url <- switch(protocol,
+  origin_url <- switch(
+    protocol,
     https = create$clone_url,
-    ssh = create$ssh_url
+    ssh   = create$ssh_url
   )
 
   ui_done("Setting remote {ui_value('origin')} to {ui_value(origin_url)}")
@@ -158,7 +155,7 @@ use_github <- function(organisation = NULL,
 #' use_github_links()
 #' }
 #'
-use_github_links <- function(auth_token = NULL,
+use_github_links <- function(auth_token = github_token(),
                              host = "https://api.github.com",
                              overwrite = FALSE) {
   check_uses_github()
@@ -168,7 +165,7 @@ use_github_links <- function(auth_token = NULL,
     owner = github_owner(),
     repo = github_repo(),
     .api_url = host,
-    .token = auth_token
+    .token = check_github_token(auth_token, allow_empty = TRUE)
   )
 
   use_description_field("URL", res$html_url, overwrite = overwrite)
@@ -181,49 +178,77 @@ use_github_links <- function(auth_token = NULL,
   invisible()
 }
 
-#' Create a GitHub personal access token
+#' Create and retrieve a GitHub personal access token
 #'
-#' Opens a browser window to the GitHub page where you can generate a [Personal
-#' Access
-#' Token](https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line).
-#' Make sure you have signed up for a free [GitHub.com](https://github.com/)
-#' account and that you are signed in. Click "Generate token" after you have
-#' verified the scopes. Copy the token right away! You probably want to store it
-#' in `.Renviron` as the `GITHUB_PAT` environment variable. [edit_r_environ()]
-#' can help you do that. Use [gh::gh_whoami()] to get information on an existing
-#' token.
+#' A [personal access
+#' token](https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line)
+#' (PAT) is needed for git operations via the GitHub API. Two helper functions
+#' are provided:
+#'   * `browse_github_token()` is synonymous with `browse_github_pat()`: Both
+#'     open a browser window to the GitHub form to generate a PAT. See below for
+#'     advice on how to store this.
+#'   * `github_token()` retrieves a stored PAT by consulting, in this order:
+#'     - `GITHUB_PAT` environment variable
+#'     - `GITHUB_TOKEN` environment variable
+#'     - the empty string `""`
 #'
-#' @param scopes Character vector of token permissions. These are just defaults
-#'   that will be pre-selected in the web form. You can select the final values
-#'   on the GitHub page. Read more about GitHub API scopes at
+#' @section: Get and store a PAT:
+#' Sign up for a free [GitHub.com](https://github.com/) account and sign in.
+#' Call `browse_github_token()`. Verify the scopes and click "Generate token".
+#' Copy the token right away! A common approach is to store in `.Renviron` as
+#' the `GITHUB_PAT` environment variable. [edit_r_environ()] opens this file for
+#' editing.
+#'
+#' @param scopes Character vector of token scopes, pre-selected in the web
+#'   form. Final choices are made in the GitHub form. Read more about GitHub
+#'   API scopes at
 #'   <https://developer.github.com/apps/building-oauth-apps/scopes-for-oauth-apps/>.
-#'
 #' @param description Short description or nickname for the token. It helps you
 #'   distinguish various tokens on GitHub.
 #' @inheritParams use_github
+#'
+#' @seealso [gh::gh_whoami()] for information on an existing token.
+#'
+#' @return `github_token()` returns a string, a GitHub PAT or `""`.
 #' @export
 #' @examples
 #' \dontrun{
-#' browse_github_pat()
+#' browse_github_token()
 #' ## COPY THE PAT!!!
 #' ## almost certainly to be followed by ...
 #' edit_r_environ()
 #' ## which helps you store the PAT as an env var
 #' }
-browse_github_pat <- function(scopes = c("repo", "gist"),
-                              description = "R:GITHUB_PAT",
-                              host = "https://github.com") {
+browse_github_token <- function(scopes = c("repo", "gist"),
+                                description = "R:GITHUB_PAT",
+                                host = "https://github.com") {
   scopes <- glue_collapse(scopes, ",")
-  url <- sprintf(
-    "%s/settings/tokens/new?scopes=%s&description=%s",
-    host, scopes, description
+  url <- glue(
+    "{host}/settings/tokens/new?scopes={scopes}&description={description}"
   )
   view_url(url)
 
-  ui_todo("Call {ui_code('usethis::edit_r_environ()')} to open {ui_path('.Renviron')}")
+  ui_todo(
+    "Call {ui_code('usethis::edit_r_environ()')} to open {ui_path('.Renviron')}."
+  )
   ui_todo("Store your PAT with a line like:")
   ui_code_block("GITHUB_PAT=xxxyyyzzz")
   ui_todo("Make sure {ui_value('.Renviron')} ends with a newline!")
+  invisible()
+}
+
+#' @rdname browse_github_token
+#' @export
+browse_github_pat <- browse_github_token
+
+#' @rdname browse_github_token
+#' @export
+#' @examples
+#' # for safety's sake, just reveal first 4 characters
+#' substr(github_token(), 1, 4)
+github_token <- function() {
+  token <- Sys.getenv("GITHUB_PAT", "")
+  if (token == "") Sys.getenv("GITHUB_TOKEN", "") else token
 }
 
 ## checks for existence of 'origin' remote with 'github' in URL
@@ -280,17 +305,47 @@ check_no_github_repo <- function(owner, repo, host, auth_token) {
   ui_stop("Repo {ui_value(spec)} already exists on {ui_value(where)}.")
 }
 
-check_github_token <- function(auth_token) {
-  if (is.null(auth_token) || !nzchar(auth_token)) {
+
+# github token helpers ----------------------------------------------------
+
+## minimal check: token is not the value that means "we have no PAT",
+## which is currently the empty string "", for compatibility with gh
+have_github_token <- function(auth_token = github_token()) {
+  !isTRUE(auth_token == "")
+}
+
+check_github_token <- function(auth_token = github_token(),
+                               allow_empty = FALSE) {
+  if (allow_empty && !have_github_token(auth_token)) {
+    return(auth_token)
+  }
+
+  local_stop <- function(msg) {
     ui_stop(c(
-      "No GitHub {ui_code('auth_token')}.",
-      "Provide explicitly or make available as an environment variable.",
-      "See {ui_code('browse_github_pat()')} for help setting this up."
+      msg,
+      "See {ui_code('browse_github_token()')} for help storing a token as an environment variable."
     ))
+  }
+
+  if (!is_string(auth_token) || is.na(auth_token)) {
+    local_stop("GitHub {ui_code('auth_token')} must be a single string.")
+  }
+  if (!have_github_token(auth_token)) {
+    local_stop("No GitHub {ui_code('auth_token')} is available.")
   }
   user <- github_user(auth_token)
   if (is.null(user)) {
-    ui_stop("GitHub {ui_code('auth_token')} is not associated with a user.")
+    local_stop("GitHub {ui_code('auth_token')} is invalid.")
   }
   auth_token
+}
+
+## AFAICT there is no targetted way to check validity of a PAT
+## GET /user seems to be the simplest API call to verify a PAT
+## that's what gh::gh_whoami() does
+## https://developer.github.com/v3/auth/#via-oauth-tokens
+github_user <- function(auth_token = github_token()) {
+  suppressMessages(
+    tryCatch(gh::gh_whoami(auth_token), error = function(e) NULL)
+  )
 }

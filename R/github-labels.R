@@ -62,9 +62,10 @@ use_github_labels <- function(repo_spec = github_repo_spec(),
                               colours = character(),
                               descriptions = character(),
                               delete_default = FALSE,
-                              auth_token = NULL,
+                              auth_token = github_token(),
                               host = NULL) {
   check_uses_github()
+  check_github_token(auth_token)
 
   gh <- function(endpoint, ...) {
     out <- gh::gh(
@@ -177,7 +178,7 @@ use_github_labels <- function(repo_spec = github_repo_spec(),
 #' @export
 #' @rdname use_github_labels
 use_tidy_labels <- function(repo_spec = github_repo_spec(),
-                            auth_token = NULL,
+                            auth_token = github_token(),
                             host = NULL) {
   use_github_labels(
     repo_spec = repo_spec,

@@ -238,6 +238,99 @@ choose_protocol <- function() {
   }
 }
 
+#' Configure and report Git remotes
+#'
+#' Two helpers are available:
+#'   * `use_git_remote()` sets the remote associated with `name` to `url`.
+#'   * `git_remotes()` reports the configured remotes, similar to
+#'     `git remote -v`.
+#'
+#' @param name A string giving the short name of a remote.
+#' @param url A string giving the url of a remote.
+#' @param overwrite Logical. Controls whether an existing remote can be
+#'   modified.
+#'
+#' @return Named list of Git remotes.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # see current remotes
+#' git_remotes()
+#'
+#' # add new remote named 'foo', a la `git remote add <name> <url>`
+#' use_git_remote(name = "foo", url = "https://github.com/<OWNER>/<REPO>.git")
+#'
+#' # remove existing 'foo' remote, a la `git remote remove <name>`
+#' use_git_remote(name = "foo", url = NULL, overwrite = TRUE)
+#'
+#' # change URL of remote 'foo', a la `git remote set-url <name> <newurl>`
+#' use_git_remote(
+#'   name = "foo",
+#'   url = "https://github.com/<OWNER>/<REPO>.git",
+#'   overwrite = TRUE
+#' )
+#'
+#' # Scenario: Fix remotes when you cloned someone's repo, but you should
+#' # have fork-and-cloned (in order to make a pull request).
+#'
+#' # Store origin = main repo's URL, e.g., "git@github.com:<OWNER>/<REPO>.git"
+#' upstream_url <- git_remotes()[["origin"]]
+#'
+#' # IN THE BROWSER: fork the main GitHub repo and get your fork's remote URL
+#' my_url <- "git@github.com:<ME>/<REPO>.git"
+#'
+#' # Rotate the remotes
+#' use_git_remote(name = "origin", url = my_url)
+#' use_git_remote(name = "upstream", url = upstream_url)
+#' git_remotes()
+#'
+#' # Scenario: Add upstream remote to a repo that you fork-and-cloned, so you
+#' # can pull upstream changes.
+#' # Note: If you fork-and-clone via `usethis::create_from_github()`, this is
+#' # done automatically!
+#'
+#' # Get URL of main GitHub repo, probably in the browser
+#' upstream_url <- "git@github.com:<OWNER>/<REPO>.git"
+#' use_git_remote(name = "upstream", url = upstream_url)
+#' }
+use_git_remote <- function(name = "origin", url, overwrite = FALSE) {
+  stopifnot(is_string(name))
+  stopifnot(is.null(url) || is_string(url))
+  stopifnot(rlang::is_true(overwrite) || rlang::is_false(overwrite))
+
+  repo <- git_repo()
+  remotes <- git_remotes()
+
+  if (name %in% names(remotes) && !overwrite) {
+    ui_stop("Remote {ui_value(name)} already exists. Use \\
+            {ui_code('overwrite = TRUE')} to edit it anyway.")
+  }
+
+  if (name %in% names(remotes)) {
+    if (is.null(url)) {
+      git2r::remote_remove(repo = repo, name = name)
+    } else {
+      git2r::remote_set_url(repo = repo, name = name, url = url)
+    }
+  } else {
+    git2r::remote_add(repo = repo, name = name, url = url)
+  }
+
+  invisible(git_remotes())
+}
+
+#' @rdname use_git_remote
+#' @export
+git_remotes <- function() {
+  repo <- git_repo()
+  rnames <- git2r::remotes(repo)
+  if (length(rnames) == 0) {
+    return(NULL)
+  }
+  stats::setNames(as.list(git2r::remote_url(repo, rnames)), rnames)
+}
+
 git2r_env <- new.env(parent = emptyenv())
 
 #' Produce or register git2r credentials
@@ -297,12 +390,12 @@ git2r_env <- new.env(parent = emptyenv())
 #'   However, usethis can offer even more chance of success in the HTTPS case.
 #'   GitHub also accepts a personal access token (PAT) via HTTPS. If
 #'   `credentials = NULL` and a PAT is available, we send it. Preference is
-#'   given to any `auth_token` that is passed explicitly. Otherwise, the
-#'   environment variables `GITHUB_PAT` and `GITHUB_TOKEN` are consulted, in
-#'   that order. If a PAT is found, we make an HTTPS credential with
-#'   [git2r::cred_user_pass()]. The PAT is sent as the password and dummy text
-#'   is sent as the username (the PAT is what really matters in this case). You
-#'   can also register an explicit credential yourself in a similar way:
+#'   given to any `auth_token` that is passed explicitly. Otherwise,
+#'   [github_token()] is called. If a PAT is found, we make an HTTPS
+#'   credential with [git2r::cred_user_pass()]. The PAT is sent as the password
+#'   and dummy text is sent as the username (the PAT is what really matters in
+#'   this case). You can also register an explicit credential yourself in a
+#'   similar way:
 #' ```
 #' my_cred <- git2r::cred_user_pass(
 #'   username = "janedoe",
@@ -314,10 +407,7 @@ git2r_env <- new.env(parent = emptyenv())
 #'   `my_cred`.
 #'
 #' @inheritParams git_protocol
-#' @param auth_token Provide a personal access token (PAT) from
-#'   <https://github.com/settings/tokens>. If `NULL`, will use the logic
-#'   described in [gh::gh_whoami()] to look for a token stored in an environment
-#'   variable. Use [browse_github_pat()] to help set up your PAT.
+#' @param auth_token GitHub personal access token (PAT).
 #' @param credentials A git2r credential object produced with
 #'   [git2r::cred_env()], [git2r::cred_ssh_key()], [git2r::cred_token()], or
 #'   [git2r::cred_user_pass()].
@@ -329,10 +419,14 @@ git2r_env <- new.env(parent = emptyenv())
 #' @examples
 #' git2r_credentials()
 #' git2r_credentials(protocol = "ssh")
+#'
+#' \dontrun{
+#' # these calls look for a GitHub PAT
 #' git2r_credentials(protocol = "https")
 #' git2r_credentials(protocol = "https", auth_token = "MY_GITHUB_PAT")
+#' }
 git2r_credentials <- function(protocol = git_protocol(),
-                              auth_token = NULL) {
+                              auth_token = github_token()) {
   if (rlang::env_has(git2r_env, "credentials")) {
     return(git2r_env$credentials)
   }
@@ -341,9 +435,8 @@ git2r_credentials <- function(protocol = git_protocol(),
     return(NULL)
   }
 
-  auth_token <- auth_token %||% github_token()
-  if (nzchar(auth_token)) {
-    git2r::cred_user_pass("EMAIL", auth_token)
+  if (have_github_token(auth_token)) {
+    git2r::cred_user_pass("EMAIL", check_github_token(auth_token))
   } else {
     NULL
   }
@@ -368,18 +461,6 @@ git_sitrep <- function() {
   name <- git_config_get("user.name", global = TRUE)
   email <- git_config_get("user.email", global = TRUE)
 
-  hd_line <- function(name) {
-    cat_line(crayon::bold(name))
-  }
-  kv_line <- function(key, value) {
-    if (is.null(value)) {
-      value <- crayon::red("<unset>")
-    } else {
-      value <- ui_value(value)
-    }
-    cat_line("* ", ui_field(key), ": ", value)
-  }
-
   hd_line("User")
   kv_line("Name", name)
   kv_line("Email", email)
@@ -403,19 +484,19 @@ git_sitrep <- function() {
   }
 
   hd_line("GitHub")
-  if (!nzchar(github_token())) {
-    cat_line("No token available")
-  } else {
+  if (have_github_token()) {
+    ui_done("Personal access token found in env var")
     who <- github_user()
     if (is.null(who)) {
-      cat_line("Token not associated with a user")
+      cat_line("Token is invalid")
     } else {
       kv_line("User", who$login)
       kv_line("Name", who$name)
     }
+  } else {
+    cat_line("No personal access token found")
   }
 }
-
 
 # Vaccination -------------------------------------------------------------
 

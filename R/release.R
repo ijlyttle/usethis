@@ -57,7 +57,7 @@ release_checklist <- function(version) {
     todo("`rhub::check(platform = 'ubuntu-rchk')`", has_src),
     todo("`rhub::check_with_sanitizers()`", has_src),
     todo("`revdepcheck::revdep_check(num_workers = 4)`", on_cran),
-    todo("[Polish NEWS](http://style.tidyverse.org/news.html#before-release)", on_cran),
+    todo("[Polish NEWS](https://style.tidyverse.org/news.html#news-release)", on_cran),
     todo("Polish pkgdown reference index"),
     todo("Draft blog post", type != "patch"),
     "",
@@ -102,7 +102,8 @@ release_type <- function(version) {
 #'
 #' @inheritParams use_github_links
 #' @export
-use_github_release <- function(host = NULL, auth_token = NULL) {
+use_github_release <- function(host = NULL,
+                               auth_token = github_token()) {
   cran_release <- proj_path("CRAN-RELEASE")
   if (file_exists(cran_release)) {
     file_delete(cran_release)
@@ -110,6 +111,7 @@ use_github_release <- function(host = NULL, auth_token = NULL) {
 
   check_uses_github()
   check_branch_pushed()
+  check_github_token(auth_token)
 
   package <- package_data()
 

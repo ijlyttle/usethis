@@ -2,6 +2,13 @@
 
 ## New features
 
+* `git_remotes()` and `use_git_remote()` are new helpers to inspect or modify
+  Git remote URLs for the repo associated with the active project (#649).
+
+* `use_rcpp_armadillo()` and `use_rcpp_eigen()` are new functions 
+   that set up a package to use RcppArmadillo or RcppEigen, respectively
+   (#421, @coatless, @duckmayr).
+
 * `use_tutorial()` creates a new interactive R Markdown tutorial, as implemented
   by the [`learnr` package](https://rstudio.github.io/learnr/index.html)
   (@angela-li, #645).
@@ -45,6 +52,9 @@
 
 * `use_github_release()` creates a draft GitHub release using the entries
   in  `NEWS.md` (#137).
+
+* `use_gitlab_ci()` creates a draft gitlab-ci.yaml for use with GitLab 
+  (#565, @overmar).
 
 * `use_lgpl_license()` automates set up of the LGL license (#448, @krlmlr).
 
