@@ -17,3 +17,6 @@
 ^_pkgdown\.yml$
 ^docs$
 ^vignettes/articles$
+^usethis\.Rcheck$
+^usethis.*\.tar\.gz$
+^usethis.*\.tgz$

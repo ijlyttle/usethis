@@ -3,3 +3,6 @@
 .RData
 inst/doc
 docs
+usethis.Rcheck/
+usethis*.tar.gz
+usethis*.tgz
