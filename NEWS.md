@@ -2,6 +2,8 @@
 
 ## New features
 
+* Ian was here.
+
 * `git_remotes()` and `use_git_remote()` are new helpers to inspect or modify
   Git remote URLs for the repo associated with the active project (#649).
 
